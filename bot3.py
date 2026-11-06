@@ -584,12 +584,13 @@ async def run_reconciliation(msg, chat_id):
 
 # ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+async def post_init(application):
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
     logger.info(f"Health check на порту {PORT}")
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+if __name__ == "__main__":
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
     app.add_handler(MessageHandler(filters.ALL, handle_message))
     logger.info("Бот сверки эквайринга запущен!")
     app.run_polling(drop_pending_updates=True)
