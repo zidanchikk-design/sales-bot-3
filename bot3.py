@@ -584,7 +584,7 @@ async def run_reconciliation(msg, chat_id):
 
 # ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
 
-def main():
+if __name__ == "__main__":
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
     logger.info(f"Health check на порту {PORT}")
@@ -593,6 +593,3 @@ def main():
     app.add_handler(MessageHandler(filters.ALL, handle_message))
     logger.info("Бот сверки эквайринга запущен!")
     app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    main()
