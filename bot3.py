@@ -294,64 +294,54 @@ def reconcile(ofd_rows: list[dict], bank_rows: list[dict]) -> dict:
 
 # ─── ЗАПИСЬ В ТАБЛИЦУ ─────────────────────────────────────────────────────────
 
-HEADER = [
-    'Дата', 'Нал приход ОФД', 'Нал возврат ОФД',
-    'Безнал приход ОФД', 'Безнал возврат ОФД', 'Безнал нетто ОФД',
-    'Эквайринг банк', 'СБП банк', 'Итого банк',
-    f'Ожидаемо (−{ACQUIRING_FEE_PCT}%)', 'Расхождение', 'Статус'
-]
-
 def write_to_sheet(result: dict, period_label: str):
-    """Дописывает результаты сверки в конец листа 'Эквайринг'."""
+    """Дописывает итог сверки в конец листа 'Эквайринг' в читаемом формате."""
     ws = get_or_create_sheet(RECONCILE_SHEET)
 
-    # Узнаём сколько строк уже есть
     existing = sheets_call_with_retry(lambda: ws.col_values(1))
     next_row = len(existing) + 1
 
-    # Если лист пустой — добавляем заголовок колонок
+    commission = result['total_ofd_net'] - result['total_expected']
+    pending = [d for d in result['days'] if '⏳' in d['status']]
+    pending_sum = sum(d['ofd_net_elec'] for d in pending)
+
+    if abs(result['total_diff']) < 100:
+        verdict = f"🟢 Всё сошлось! Расхождение: {result['total_diff']:+.0f} ₽ (норма)"
+    elif result['total_diff'] < 0:
+        verdict = f"🔴 Не хватает {abs(result['total_diff']):,.0f} ₽ — проверь выписку"
+    else:
+        verdict = f"🟡 Лишние {result['total_diff']:,.0f} ₽ — возможно старые зачисления"
+
     rows = []
-    if next_row == 1:
-        rows.append(HEADER)
-        next_row += 1
+    rows.append([f"✅ Сверка за {period_label} готова!", ''])
+    rows.append([''])
+    rows.append([f"💰 Продажи по карте (ОФД):", f"{result['total_ofd_net']:,.0f} ₽"])
+    rows.append([f"🏦 Пришло на счёт:", f"{result['total_bank']:,.0f} ₽"])
+    rows.append([f"📉 Комиссия банка ({ACQUIRING_FEE_PCT}%):", f"−{commission:,.0f} ₽"])
+    rows.append(['━━━━━━━━━━━━━━', ''])
+    rows.append([verdict, ''])
+    if pending:
+        rows.append([f"⏳ Ещё не пришло:", f"{pending_sum:,.0f} ₽ ({len(pending)} дн.) — ждём зачисления"])
+    rows.append([''])
+    rows.append(['Детализация по дням:', ''])
 
-    # Разделитель с периодом
-    rows.append([f"── Сверка за {period_label} (комиссия {ACQUIRING_FEE_PCT}%) ──", '', '', '', '', '', '', '', '', '', '', ''])
-
+    # Шапка детализации
+    rows.append(['Дата', 'ОФД безнал', 'Банк всего', 'Ожидалось', 'Расхождение', 'Статус'])
     for day in result['days']:
         rows.append([
             day['date'].strftime('%d.%m.%Y'),
-            day['ofd_cash'],
-            day['ofd_cash_ret'],
-            day['ofd_elec'],
-            day['ofd_elec_ret'],
-            day['ofd_net_elec'],
-            day['bank_acquiring'],
-            day['bank_sbp'],
-            day['bank_total'],
-            day['expected'],
-            day['diff'],
+            f"{day['ofd_net_elec']:,.0f} ₽",
+            f"{day['bank_total']:,.0f} ₽",
+            f"{day['expected']:,.0f} ₽",
+            f"{day['diff']:+.0f} ₽",
             day['status'],
         ])
 
-    # Итоговая строка периода
-    rows.append([
-        f'ИТОГО {period_label}',
-        '', '',
-        result['total_ofd_elec'],
-        result['total_ofd_elec_ret'],
-        result['total_ofd_net'],
-        '', '',
-        result['total_bank'],
-        result['total_expected'],
-        result['total_diff'],
-        '✅ OK' if abs(result['total_diff']) < 10 else '⚠️ Есть расхождение',
-    ])
-    rows.append([])  # пустая строка-разделитель
+    rows.append([''])  # пустая строка-разделитель
 
     start_cell = f'A{next_row}'
     sheets_call_with_retry(lambda: ws.update(start_cell, rows, value_input_option='USER_ENTERED'))
-    logger.info(f"Дописано {len(result['days'])} строк на лист '{RECONCILE_SHEET}' начиная с {start_cell}")
+    logger.info(f"Записано на лист '{RECONCILE_SHEET}' начиная с {start_cell}")
     return RECONCILE_SHEET
 
 # ─── СОСТОЯНИЕ СЕССИЙ ─────────────────────────────────────────────────────────
