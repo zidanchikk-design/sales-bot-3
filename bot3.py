@@ -217,10 +217,13 @@ def reconcile(ofd_rows: list[dict], bank_rows: list[dict]) -> dict:
             ofd_by_day[d]['cash_ret'] += r['cash']
             ofd_by_day[d]['elec_ret'] += r['electronic']
 
-    # Суммы из банка по дням (эквайринг + СБП)
+    # Суммы из банка по дням (эквайринг + СБП + прочие поступления)
     bank_by_day = defaultdict(lambda: {'acquiring': 0, 'sbp': 0})
     for r in bank_rows:
-        bank_by_day[r['date']][r['source']] += r['amount']
+        src = r['source']
+        if src == 'other':
+            src = 'sbp'  # прочие поступления считаем как СБП
+        bank_by_day[r['date']][src] += r['amount']
 
     # Общий период
     all_dates = sorted(set(list(ofd_by_day.keys()) + list(bank_by_day.keys())))
