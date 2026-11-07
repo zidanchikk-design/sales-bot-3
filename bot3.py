@@ -543,38 +543,32 @@ async def run_reconciliation(msg, chat_id):
         sheet_name = write_to_sheet(result, period_label)
 
         # Формируем итоговое сообщение
-        days_count = len(result['days'])
-        problems = [d for d in result['days'] if '⚠️' in d['status'] or '❓' in d['status']]
         pending = [d for d in result['days'] if '⏳' in d['status']]
+        pending_sum = sum(d['ofd_net_elec'] for d in pending)
+        commission = result['total_ofd_net'] - result['total_expected']
 
         lines = [
-            f"✅ *Сверка завершена* за {period_label}",
+            f"✅ *Сверка за {period_label} готова!*",
             f"",
-            f"📊 *Итого по ОФД (безнал):* {result['total_ofd_net']:,.2f} ₽",
-            f"🏦 *Зачислено в банке:* {result['total_bank']:,.2f} ₽",
-            f"📉 *Комиссия ({ACQUIRING_FEE_PCT}%):* {result['total_ofd_net'] - result['total_expected']:,.2f} ₽",
-            f"",
+            f"💰 Продажи по карте (ОФД): *{result['total_ofd_net']:,.0f} ₽*",
+            f"🏦 Пришло на счёт: *{result['total_bank']:,.0f} ₽*",
+            f"📉 Комиссия банка ({ACQUIRING_FEE_PCT}%): −{commission:,.0f} ₽",
+            f"━━━━━━━━━━━━━━",
         ]
 
-        if abs(result['total_diff']) < 10:
-            lines.append("✅ Общий баланс сходится!")
+        if abs(result['total_diff']) < 100:
+            lines.append(f"🟢 *Всё сошлось!* Расхождение: {result['total_diff']:+.0f} ₽ (норма)")
+        elif result['total_diff'] < 0:
+            lines.append(f"🔴 *Не хватает {abs(result['total_diff']):,.0f} ₽* — проверь выписку")
         else:
-            sign = "+" if result['total_diff'] > 0 else ""
-            lines.append(f"⚠️ *Расхождение итогов:* {sign}{result['total_diff']:,.2f} ₽")
-
-        if problems:
-            lines.append(f"\n⚠️ *Дни с расхождениями ({len(problems)}):*")
-            for d in problems[:5]:  # Показываем первые 5
-                lines.append(f"  • {d['date'].strftime('%d.%m')} — {d['status']} ({d['diff']:+.2f} ₽)")
-            if len(problems) > 5:
-                lines.append(f"  _...и ещё {len(problems)-5} дней_")
+            lines.append(f"🟡 *Лишние {result['total_diff']:,.0f} ₽* — возможно старые зачисления")
 
         if pending:
-            lines.append(f"\n⏳ *Ещё не зачислено ({len(pending)} дней):*")
-            for d in pending[:3]:
-                lines.append(f"  • {d['date'].strftime('%d.%m')} — {d['ofd_net_elec']:,.0f} ₽")
+            lines.append(f"")
+            lines.append(f"⏳ *Ещё не пришло:* {pending_sum:,.0f} ₽ ({len(pending)} дн.) — ждём зачисления")
 
-        lines.append(f"\n📋 Детализация по дням → лист *\"{sheet_name}\"*")
+        lines.append(f"")
+        lines.append(f"📋 Детали по дням → лист *\"{sheet_name}\"*")
 
         await msg.reply_text('\n'.join(lines), parse_mode='Markdown')
 
